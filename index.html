@@ -251,59 +251,14 @@
       </div>
     </div>
 
-    <div class="row" style="margin-top: 1%;">
-      <div class="col-sm">
-        <button type="button" id="createBoard" class="btn btn-primary btn-sm">创建空白白板</button>
-        <button type="button" onclick="document.getElementById('file').click();" class="btn btn-primary btn-sm">文件白板</button>
-        <input type="file" style="position: absolute; opacity: 0; z-index: -1;" id="file"/>
-        <button type="button" id="changeBoard" class="btn btn-primary btn-sm">切换白板</button>
-        <button type="button" id="destroyBoard" class="btn btn-primary btn-sm">销毁白板</button>
-      </div>
-    </div>
-
-
     <div class="row" style="margin-top: 15px;">
       <div class="col-sm">
         <label id="previewLabel"></label>
         <video id="previewVideo" autoplay muted playsinline controls>
-          <!--<source src="./big_buck_bunny.mp4" type="video/mp4"/>-->
         </video>
       </div>
-      <div class="col-sm remoteVideo">
+      <div class="col-sm remoteVideo" id='remoteVideoContainer'>
         <video autoplay muted playsinline controls></video>
-      </div>
-    </div>
-
-    <!-- 白板 -->
-    <div class="row">
-      <div class="color-list">
-        <ul id="colorList">
-          <span style="float: left;">画笔颜色：</span>
-          <li class="orange" data-color="#ffa500"></li>
-          <li class="red" data-color="#ff0000"></li>
-          <li class="green" data-color="#00ff00"></li>
-          <!-- <li class="black" data-color="#000000"></li> -->
-        </ul>
-
-        <div class="page-item">
-          <span id="prevPage">上一页</span>
-          <span id="nextPage">下一页</span>
-        </div>
-
-        <span style="float: left; margin-left: 20px;">白板工具：</span>
-        <select id="viewTool">
-          <option value="path">涂鸦</option>
-          <option value="text">文本框</option>
-          <option value="line">直线</option>
-          <option value="rect">空心矩形</option>
-          <option value="ellipse">空心椭圆</option>
-          <option value="selector">选择工具</option>
-          <option value="eraser">橡皮擦</option>
-          <option value="laser">激光笔</option>
-        </select>
-
-      </div>
-      <div id="boardBox" style="margin-left: 15px; width: 500px; height: 300px; border: 1px solid rgb(241, 243, 244);">
       </div>
     </div>
 
