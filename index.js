@@ -39,16 +39,6 @@ function init () {
   console.info(version);
   setConfig(zg);
   console.log("初始化sdk");
-  const buffer = zg.audioMixing.ac.createBuffer(1, 1, zg.audioMixing.ac.sampleRate);
-  console.log("创建buffer");
-  const sample = zg.audioMixing.ac.createBufferSource();
-  console.log("创建buffer源");
-  sample.buffer = buffer;
-  console.log("buffer赋值");
-  sample.connect(zg.audioMixing.ac.destination);
-  console.log("connect");
-  sample.start();
-  console.log("开始混音");
   console.log("config param:" + JSON.stringify(_config));
 
   zg.config(_config);
@@ -181,6 +171,7 @@ function listen () {
     onPlayStateUpdate: function (type, streamid, error) {
       if (type == 0) {
         console.info('play  success');
+        getPlayVolume()
       } else if (type == 2) {
         console.info('play retry');
       } else {
@@ -230,11 +221,11 @@ function listen () {
     },
 
     onPublishQualityUpdate: function (streamid, quality) {
-      console.info("#" + streamid + "#" + "publish " + " audio: " + quality.audioBitrate + " video: " + quality.videoBitrate + " fps: " + quality.videoFPS);
+      // console.info("#" + streamid + "#" + "publish " + " audio: " + quality.audioBitrate + " video: " + quality.videoBitrate + " fps: " + quality.videoFPS);
     },
 
     onPlayQualityUpdate: function (streamid, quality) {
-      console.info("#" + streamid + "#" + "play " + " audio: " + quality.audioBitrate + " video: " + quality.videoBitrate + " fps: " + quality.videoFPS);
+      // console.info("#" + streamid + "#" + "play " + " audio: " + quality.audioBitrate + " video: " + quality.videoBitrate + " fps: " + quality.videoFPS);
     },
 
     onDisconnect: function (error) {
@@ -272,6 +263,7 @@ function listen () {
         });
         remoteVideo.muted = false;
       } else {
+        clearPlay()
       }
 
     },
@@ -330,6 +322,25 @@ function listen () {
     zg[key] = _config[key]
   }
 
+}
+
+function getPlayVolume () {
+  const remoteVideo = document.getElementById('remoteVideo')
+  if (!remoteVideo) return
+  const stream = remoteVideo.srcObject
+  if (!stream) return
+  console.log('获取音量')
+  const audioContext = zg.audioMixing.ac
+  const source = audioContext.createMediaStreamSource(stream)
+  const scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1)
+  source.connect(scriptProcessor)
+  scriptProcessor.connect(audioContext.destination)
+  scriptProcessor.onaudioprocess = function (e) {
+    const buffer = e.inputBuffer.getChannelData(0); //获得缓冲区的输入音频，转换为包含了PCM通道数据的32位浮点数组
+    //创建变量并迭代来获取最大的音量值
+    let maxVal = Math.max.apply(Math, buffer)
+    console.log('拉流音量：', maxVal)
+  }
 }
 
 
