@@ -186,7 +186,7 @@ function listen () {
       } else {
 
         console.error("play error " + error.msg);
-
+        clearPlay()
         var _msg = error.msg;
         if (error.msg.indexOf('server session closed, reason: ') > -1) {
           var code = error.msg.replace('server session closed, reason: ', '');
@@ -395,11 +395,14 @@ $(function () {
         });
       })
 
+      $('#startPreview').click(function () {
+        zg.startPreview(previewVideo, getPreviewConfig())
+        isPreviewed = true
+      })
+
       $('#startPublishing').click(function () {
-        if (isLogin) {
+        if (isLogin && isPreviewed) {
           console.warn('开始推流');
-          zg.startPreview(previewVideo, getPreviewConfig());
-          isPreviewed = true
           publish();
         }
       });
