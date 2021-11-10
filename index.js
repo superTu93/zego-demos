@@ -18,16 +18,12 @@ var zg,
   },
   loginRoom = false,
   previewVideo,
-  useLocalStreamList = [],
-  anchor_userid,
-  anchro_username,
   isLogin = false,
   isPreviewed = false,
-  musicIndex = 0,
+  isPublish = false,
   $userList = [],
   userRole = 1, // 全局存一份角色
-  _fromUserId;
-streamId = _config.idName
+  streamId = _config.idName
 let apiDomain = "https://test.zegonetwork.com:1143";
 recordConfig = {
   remoteUserid: '',
@@ -130,48 +126,6 @@ function enumDevices () {
   });
 }
 
-
-//预览
-function doPreviewPublish (config, externalVide) {
-  var previewConfig = {
-    "audio": $('#audioList').val() === '0' ? false : true,
-    "audioInput": $('#audioList').val() || null,
-    "video": $('#videoList').val() === '0' ? false : true,
-    "videoInput": $('#videoList').val() || null,
-    "videoQuality": 4,
-    "horizontal": true,
-    "externalCapture": false,
-    "externalMediaStream": null,
-    "width": 480,
-    "height": 640,
-    "frameRate": 15,
-    "bitRate": $('#videoBitRateInput').val() * 1,
-    audioBitRate: $('#audioBitRateInput').val() * 1,
-    noiseSuppression: $('#noiseSuppression').val() === '1' ? true : false,
-//    noiseSuppression: true,
-    autoGainControl: $('#autoGainControl').val() === '1' ? true : false,
-    echoCancellation: $('#echoCancellation').val() === '1' ? true : false,
-//    autoGainControl: true,
-//    echoCancellation: true,
-
-  };
-  previewConfig = $.extend(previewConfig, config);
-  console.log('previewConfig', previewConfig);
-  console.log('autoGainControl', $('#autoGainControl').val() === '1' ? true : false,);
-  previewVideo = externalVide ? externalVide : previewVideo;
-  var result = zg.startPreview(previewVideo, previewConfig, function () {
-    console.log('preview success');
-    isPreviewed = true;
-    $('#previewLabel').html(_config.nickName);
-    publish();
-    //部分浏览器会有初次调用摄像头后才能拿到音频和视频设备label的情况
-  }, function (err) {
-    console.error('preview failed', err);
-  });
-
-  if (!result) alert('预览失败！')
-}
-
 function getPreviewConfig () {
   return {
     "audio": $('#audioList').val() === '0' ? false : true,
@@ -199,28 +153,25 @@ function getPreviewConfig () {
 //推流
 function publish () {
   var videoCodeType = $('#videoCodeType').val();
-  console.log('autoGainControl', $('#autoGainControl').val() === '1' ? true : false,);
-  zg.startPublishingStream(_config.idName, previewVideo, null, {videoDecodeType: videoCodeType ? videoCodeType : 'H264'});//{cdnUrl:'rtmp://47.100.59.215/cnzegodemo/teststream11'}
+  zg.startPublishingStream(streamId, previewVideo, null, {videoDecodeType: videoCodeType ? videoCodeType : 'H264'});
 }
 
 
-function play (streamId, video) {
-  var playVideoCodeType = $('#playVideoCodeType').val();
-  var result = zg.startPlayingStream(streamId, video, null, {
-    //playType: 'all',
-    videoDecodeType: playVideoCodeType ? playVideoCodeType : 'H264'
-  });//
+function play (streamList) {
+  if (!streamList.length) return
+  let {stream_id, extra_info} = streamList[0];
+  let videoCodeType = extra_info ? JSON.parse(extra_info).videoCodeType : 'H264';
+  const remoteVideo = getRemoteVideo()
+  zg.startPlayingStream(stream_id, remoteVideo, '', {
+    videoDecodeType: videoCodeType
+  });
+  remoteVideo.muted = false;
+}
 
-
-  if (!result) {
-    alert('哎呀，播放失败啦');
-    video.style = 'display:none';
-    console.error("play " + el.nativeElement.id + " return " + result);
-
-  } else {
-    video.muted = false;
-  }
-
+function clearPlay () {
+  const remoteVideoContainer = document.getElementById('remoteVideoContainer')
+  let remoteVideo = document.getElementById('remoteVideo')
+  remoteVideo && remoteVideoContainer.removeChild(remoteVideo)
 }
 
 
@@ -255,10 +206,12 @@ function listen () {
     onPublishStateUpdate: function (type, streamid, error) {
       if (type == 0) {
         console.info(' publish  success');
+        isPublish = true
       } else if (type == 2) {
         console.info(' publish  retry');
       } else {
         console.error('publish error ' + error.msg);
+        isPublish = false
         var _msg = error.msg;
         if (error.msg.indexOf('server session closed, reason: ') > -1) {
           var code = error.msg.replace('server session closed, reason: ', '');
@@ -281,7 +234,6 @@ function listen () {
     },
 
     onPlayQualityUpdate: function (streamid, quality) {
-      console.log(quality)
       console.info("#" + streamid + "#" + "play " + " audio: " + quality.audioBitrate + " video: " + quality.videoBitrate + " fps: " + quality.videoFPS);
     },
 
@@ -294,8 +246,10 @@ function listen () {
     onKickOut: function (error) {
       console.error("onKickOut " + JSON.stringify(error));
       if (error.code == 'VideoTalkOut') {
-        //zg.stopPreview(previewVideo);
-        zg.stopPublishingStream(streamId)
+        isPreviewed && zg.stopPreview(previewVideo);
+        isPublish && zg.stopPublishingStream(streamId)
+        isPreviewed = false
+        isPublish = false
       }
     },
 
@@ -307,13 +261,19 @@ function listen () {
       alert('重连成功')
     },
 
-//    onStreamUpdated: function (type, streamList) {
-//      if (type == 0) {
-//
-//        recordConfig.remoteUserid = streamList[0].user_id
-//      }
+    onStreamUpdated: function (type, streamList) {
+      if (type === 0) {
+        let {stream_id, extra_info} = streamList[0];
+        let videoCodeType = extra_info ? JSON.parse(extra_info).videoCodeType : 'H264';
+        const remoteVideo = getRemoteVideo()
+        zg.startPlayingStream(stream_id, remoteVideo, '', {
+          videoDecodeType: videoCodeType
+        });
+        remoteVideo.muted = false;
+      } else {
+      }
 
-    //   },
+    },
 
     onStreamExtraInfoUpdated: function (streamList) {
       console.log('onStreamExtraInfoUpdated');
@@ -322,37 +282,6 @@ function listen () {
 
     onVideoSizeChanged: function (streamid, videoWidth, videoHeight) {
       console.info("#" + streamid + "#" + "play " + " : " + videoWidth + "x" + videoHeight);
-    },
-
-    onGetAnchorInfo: function (userid, username) {
-      window.anchor_userid = userid, window.anchro_username = username;
-    },
-
-    onRecvJoinLiveRequest: function (requestId, from_userid, from_username, roomid) {
-      console.log('onRecvJoinLiveRequest', requestId, from_userid, from_username, roomid);
-      $('#exampleModalLabel').text("收到id为" + requestId + "的连麦请求")
-      $('#liveConfirm').click();
-      $('#liveAgree').on('click', function () {
-        respondJoinLive(true, requestId, from_userid)
-      })
-      $('#liveRefuse').on('click', function () {
-        respondJoinLive(false, requestId, from_userid)
-      })
-    },
-
-    onRecvInviteJoinLiveRequest: function (requestId, from_userid, from_username, roomid) {
-      console.log('onRecvInviteJoinLiveRequest', requestId, from_userid, from_username, roomid);
-      $('#exampleModalLabel').text("收到id为" + requestId + "的连麦请求")
-      $('#liveConfirm').click();
-      $('#liveAgree').on('click', function () {
-        doPreviewPublish()
-      })
-    },
-
-    onRecvEndJoinLiveCommand: function (requestId, from_userid, from_username, roomid) {
-      console.log('onRecvEndJoinLiveCommand', requestId, from_userid, from_username, roomid);
-      isPreviewed && zg.stopPreview(previewVideo);
-      isPreviewed && zg.stopPublishingStream(_config.idName);
     },
     onUserStateUpdate: function (roomId, userList) {
       console.log('onUserStateUpdate', roomId, userList);
@@ -408,133 +337,12 @@ function leaveRoom () {
 
   isPreviewed && zg.stopPreview(previewVideo);
 
-  isPreviewed && zg.stopPublishingStream(_config.idName);
-
-  for (var i = 0; i < useLocalStreamList.length; i++) {
-    zg.stopPlayingStream(useLocalStreamList[i].stream_id);
-  }
-
-  useLocalStreamList = [];
+  isPublish && zg.stopPublishingStream(_config.idName);
   isPreviewed = false;
   isLogin = false;
-
-  // zg.clear(); // 清理白板资源
+  isPublish = false;
   zg.logout();
-}
-
-function getBrowser () {
-  var ua = window.navigator.userAgent;
-  var isIE = window.ActiveXObject != undefined && ua.indexOf("MSIE") != -1;
-  var isFirefox = ua.indexOf("Firefox") != -1;
-  var isOpera = window.opr != undefined;
-  var isChrome = ua.indexOf("Chrome") && window.chrome;
-  var isSafari = ua.indexOf("Safari") != -1 && ua.indexOf("Version") != -1;
-  if (isIE) {
-    return "IE";
-  } else if (isFirefox) {
-    return "Firefox";
-  } else if (isOpera) {
-    return "Opera";
-  } else if (isChrome) {
-    return "Chrome";
-  } else if (isSafari) {
-    return "Safari";
-  } else {
-    return "Unkown";
-  }
-}
-
-function IsPC () {
-  var userAgentInfo = navigator.userAgent;
-  var Agents = new Array("Android", "iPhone", "SymbianOS", "Windows Phone", "iPad", "iPod");
-  var flag = true;
-  for (var v = 0; v < Agents.length; v++) {
-    if (userAgentInfo.indexOf(Agents[v]) > 0) {
-      flag = false;
-      break;
-    }
-  }
-  return flag;
-}
-
-function startRecord (param) {
-  const body = JSON.stringify({
-    app_id: param.appId,
-    room_id: param.roomId,
-    user_id: "",
-    file_name: param.fileName || `${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.mp4`,
-    record_config: {
-      record_mode: 3,    // 单流、混流录制模式
-      user_id: [],   // 用单流模式下指定用户id, 空则两个单流都录
-      single_stream_config: [{
-        muxer_stream_type: 3,
-        user_id: _config.idName,
-        stream_id: _config.idName,
-        file_name: "single-" + _config.idName + ".mp4"
-      }],
-      mix_stream_layout: [{
-        role: 1,
-        user_id: _config.idName,
-        stream_id: "",
-        top: 0,
-        left: 0,
-        bottom: 720,
-        right: 1280,
-        layer: 0,
-        watermarking_width: 0,
-        watermarking_height: 0,
-        watermarking_info: ""
-//      },
-// {
-//        role: 2,
-//        user_id: param.customerId,
-//        stream_id: "",
-//        top: 0,
-//        left: 1281,
-//        bottom: 720,
-//        right: 1280 * 2,
-//        layer: 0,
-//        watermarking_width: 0,
-//        watermarking_height: 0,
-//        watermarking_info: ""
-      }], // TODO: Need finished layout.
-      muxer_stream_type: 3,          // 录制流类型，控制是否录制音视频。默认值：3,MuxerStreamTypeAudio = 1, 只录制音频、MuxerStreamTypeVideo = 2,
-                                     // 只录制视频 、MuxerStreamTypeBoth = 3, 录制音视频
-      fragment_seconds: 0,          // 录制文件分片间隔（0~10s），默认值：0  0表示不分片,大于0表示分片
-      output_audio_bitrate: 8000,          // 录制输出音频码率
-      output_fps: 15,         // 录制输出视频帧率
-      output_bitrate: 1700000,         // 录制输出视频码率
-      output_width: 1280,   // 录制输出视频分辨率宽
-      output_height: 720,       // 录制输出视频分辨率高
-      background_color: 0,   // 录制背景颜色，前三个字节为 RGB 颜色值，即 0xRRGGBBxx
-      dynamic_watermarking_switch: true,       // 动态水印开关
-      dynamic_watermarking_width: 1280,   // 动态水印宽度
-      dynamic_watermarking_height: 720,         // 动态水印高度
-      dynamic_watermarking_pos: 0           // 动态水印位置：0右上角 1左上角 2右下角 3左下角
-    }
-  });
-  console.log(body)
-  return fetch(`${apiDomain}/recorder/start`, {
-    headers: {"content-type": "application/json"},
-    mode: "cors",
-    method: "POST",
-    body
-  }).then(res => res.json())
-}
-
-function stopRecord (param) {
-  const body = JSON.stringify({
-    app_id: param.appId,
-    room_id: param.roomId,
-    user_id: ""
-  });
-  console.log("stoprecord", body);
-  return fetch(`${apiDomain}/recorder/stop`, {
-    headers: {"content-type": "application/json"},
-    mode: "cors",
-    method: "POST",
-    body
-  }).then(res => res.json());
+  clearPlay()
 }
 
 $(function () {
@@ -545,12 +353,7 @@ $(function () {
     if (!result.capture) {
       alert("当前浏览器不支持获取摄像头麦克风设备")
     }
-    if (!result.screenSharing) {
-      alert("当前浏览器不支持屏幕捕捉")
-    }
     if ((result.videoDecodeType.H264 || result.videoDecodeType.VP8) && result.webRtc) {
-
-
       //初始化sdk
       init();
 
@@ -566,36 +369,14 @@ $(function () {
         //以坐席角色创建房间
         zg.enterRoom($('#roomId').val(), 1, streamList => {
           isLogin = true;
-
           //限制房间最多人数，原因：视频软解码消耗cpu，浏览器之间能支撑的个数会有差异，太多会卡顿
           if (streamList.length >= 4) {
             alert('房间太拥挤，换一个吧！');
             leaveRoom();
             return;
           }
-
           streamId = _config.idName;
-
-          console.log('previewConfig', getPreviewConfig())
-          console.log(`login success`);
-
-          loginRoom = true;
-          document.getElementById('previewVideo').play();
-          console.log(`previewVideo autoplay`);
-
-          //开始预览本地视频
-          //doPreviewPublish()
-
-          startVideoTalk({
-            role: 1,
-            streamList,
-            previewConfig: getPreviewConfig(),
-            localVideo: previewVideo,
-            streamId: streamId
-          }, err => {
-            alert(JSON.stringify(err));
-          });
-
+          play(streamList)
         }, err => {
           alert(err.code + err.msg)
         });
@@ -603,69 +384,21 @@ $(function () {
       })
 
       $('#enterRoom').click(function () {
-        console.log("第一次", zg.ac.state);
         zg.enterRoom($('#roomId').val(), 0, streamList => {
           console.log('streamList:', streamList)
-
-          //play(streamList[0].stream_id, previewVideo);
+          isLogin = true
           streamId = _config.idName;
-
-          startVideoTalk({
-            role: 0,
-            streamList,
-            previewConfig: getPreviewConfig(),
-            localVideo: previewVideo,
-            streamId: streamId
-          });
-
+          play(streamList)
         }, err => {
           alert(err.code + err.msg)
         });
       })
 
-      $('#audioMix').click(function () {
-        //debugger;
-        // var url = './assets/applaud.mp3';
-        //var url = 'https://bpic.588ku.com/audio_copy/audio/18/08/24/9841faee97016cdd91720970fd984204.mp3';
-        var url1 = 'https://kfjigou.yjbtest.com:9999/api/mp3/box.mp3';
-        var musicUrl = new Array();
-        musicUrl[0] = "https://experience.zegonetwork.com/blink.mp3";
-        musicUrl[1] = "https://experience.zegonetwork.com/mouth.mp3";
-        musicUrl[2] = "https://experience.zegonetwork.com/node.mp3";
-        musicUrl[3] = "https://experience.zegonetwork.com/shake.mp3";
-        if (musicIndex <= 3) {
-          var audioMixConfig = {
-            streamId: _config.idName,
-            effectId: musicIndex + 1,
-            replace: true
-          }
-          zg.preloadEffect(musicIndex + 1, musicUrl[musicIndex], () => {
-            console.log("混音按钮状态:" + zg.ac.state);
-            console.log('music preolad');
-            zg.playEffect(audioMixConfig, () => {
-              console.warn('start play')
-              console.log("正在混音:" + zg.ac.state + musicUrl[musicIndex]);
-            }, () => {
-              console.warn('play end');
-              zg.unloadEffect(musicIndex, _config.idName);
-              console.log("混音结束后:" + zg.ac.state);
-              musicIndex++;
-            })
-          }, (err) => {console.log("混音加载异常:" + err)});
-        } else {
-          console.log("混音结束并且清零");
-          musicIndex = 0;
-          //                zg.playEffect(audioMixConfig, () => {
-          // 		  console.warn('start play')
-          //		  console.log("正在混音:" + zg.ac.state + musicUrl[musicIndex]);
-          //  });
-        }
-      });
-
       $('#startPublishing').click(function () {
-        if (loginRoom) {
+        if (isLogin) {
           console.warn('开始推流');
           zg.startPreview(previewVideo, getPreviewConfig());
+          isPreviewed = true
           publish();
         }
       });
@@ -680,119 +413,8 @@ $(function () {
         console.info('leave room  and close stream');
 
         zg.stopPreview(previewVideo) && zg.stopPublishingStream(_config.idName);
-
-        for (var i = 0; i < useLocalStreamList.length; i++) {
-          zg.stopPlayingStream(useLocalStreamList[i].stream_id);
-        }
-
-        useLocalStreamList = [];
+        clearPlay()
         zg.leaveRoom()
-      });
-
-
-      $('#screenShot').click(function () {
-
-        if (IsPC()) {
-          loginRoom && zg.stopPreview(previewVideo);
-          loginRoom && zg.stopPublishingStream(_config.idName);
-
-          var config = {
-            externalMediaStream: null,
-            width: 640,
-            height: 480,
-            frameRate: 15,
-            bitRate: 1000
-          };
-
-          getBrowser() === 'Firefox' && zg.startScreenShotFirFox({
-            mediaSource: 'window',
-            audio: false
-          }, function (suc, mediastream) {
-            console.log('startScreenShot:' + suc);
-            screenCaptrue = suc;
-            previewVideo.srcObject = mediastream;
-            // config.externalCapture = true;
-            config.externalMediaStream = mediastream;
-            if (loginRoom) {
-              doPreviewPublish(config);
-            }
-          });
-
-          getBrowser() !== 'Firefox' && zg.startScreenSharing(false, function (suc, mediastream, err) {
-            console.log('startScreenShot:' + suc);
-            let error = err;
-            let stream = mediastream;
-            screenCaptrue = suc;
-            if (!suc && getBrowser() === 'Chrome') {
-              zg.startScreenShotChrome((suc, stream, err) => {
-                screenCaptrue = suc;
-                error = err;
-                stream = stream;
-              })
-            }
-            if (error) {
-              alert(error);
-              return;
-            }
-            previewVideo.srcObject = stream;
-            // config.externalCapture = true;
-            config.externalMediaStream = stream;
-            if (loginRoom) {
-              doPreviewPublish(config);
-            }
-          })
-        }
-      });
-
-      $('#stopScreenShot').click(function () {
-        zg.stopScreenShot();
-        zg.stopPreview(previewVideo);
-        zg.stopPublishingStream(_config.idName);
-
-        doPreviewPublish();
-
-      });
-
-      $('#snapshot').click(function () {
-        ZegoClient.takeSnapShot($('#previewVideo')[0], $('#snapshotImg')[0]);
-      });
-
-      //防止，暴力退出（关闭或刷新页面）
-      // const isOnIOS = navigator.userAgent.match(/iPad/i) || navigator.userAgent.match(/iPhone/i);
-      // const eventName = isOnIOS ? "pagehide" : "beforeunload";
-      // window.addEventListener(eventName, function (event) {
-      //     window.event.cancelBubble = true; // Don't know if this works on iOS but it might!
-      //     leaveRoom();
-      // });
-
-      $('#startRecord').click(function () {
-        // ZegoClient.startRecord($('#previewVideo')[0]);
-
-        const config = {
-          roomId: "test_room_idOq7QC",
-          staffId: "test_staff_id_0XxvU",
-          staffStreamId: "s-PplTw",
-          customerId: "c64bd310-da6b-426e-bc0f-5201e19451a6",
-          customerStreamId: "test_room_idOq7QC-c64bd310-da6b-426e-bc0f-5201e19451a6"
-        };
-        startRecord({
-          appId: _config.appid,
-          roomId: $('#roomId').val(),
-          customerId: recordConfig.remoteUserid,
-          staffId: config.staffId
-        }).then(data => {
-          console.log(data);
-          console.log(`${apiDomain}${data.url}`);
-        });
-
-      });
-      $('#pauseRedord').click(function () {
-        //ZegoClient.pauseRecord();
-
-        stopRecord({
-          appId: _config.appid,
-          roomId: $('#roomId').val()
-        });
       });
 
     }
@@ -826,168 +448,6 @@ function setConfig (zg) {
 
   _config.appid = _config.appid * 1;
   _config.testEnvironment = !!(_config.testEnvironment * 1);
-}
-
-function startVideoTalk (
-  {
-    role,
-    streamList,
-    previewConfig,
-    localVideo,
-    streamId
-  }, errCallBack) {
-  let publishTryCount = 0;
-  userRole = role;
-  //座席端
-  if (role === 1) {     //坐席端
-    //预览
-    zg.startPreview(localVideo, previewConfig, () => {
-      // 客户已经推流
-      isPreviewed = true;
-      if (streamList && streamList.length > 0) {
-        let {stream_id, extra_info} = streamList[0];
-        let videoCodeType = extra_info ? JSON.parse(extra_info).videoCodeType : 'H264';
-        //拉取用户端流
-        recordConfig.remoteUserid = streamList[0].user_id
-        console.log("1收到流更新了,流名是:" + stream_id)
-        const remoteVideo = getRemoteVideo()
-        zg.startPlayingStream(stream_id, remoteVideo, '', {
-          videoDecodeType: videoCodeType || 'H264'
-        });
-        remoteVideo.muted = false;
-        //根据用户端的流附加消息进行推流
-        zg.startPublishingStream(streamId, localVideo, extra_info, {
-          videoDecodeType: videoCodeType || 'H264'
-        });
-        console.log("推流了:" + streamId)
-      }  // 等待客户推流
-      zg.onStreamUpdated = (type, streamListAfter) => {
-        let {stream_id, extra_info} = streamListAfter[0];
-        let videoCodeType = extra_info ? JSON.parse(extra_info).videoCodeType : 'H264';
-        if (type == 0) {
-          // 拉去用户端流
-          console.log("2收到流更新了,流名是:" + stream_id)
-          recordConfig.remoteUserid = streamListAfter[0].user_id
-          const remoteVideo = getRemoteVideo()
-          zg.startPlayingStream(stream_id, remoteVideo, '', {
-            videoDecodeType: videoCodeType || 'H264'
-          });
-          remoteVideo.muted = false;
-          // 根据用户端的流附加消息进行推流
-          zg.startPublishingStream(streamId, localVideo, extra_info, {
-            videoDecodeType: videoCodeType || 'H264'
-          });
-        } else {
-          // 收到流删除后停止拉流并退出
-//		  alert("对方已退出房间,已自动关闭此房间");
-          //         leaveRoom();
-        }
-      }
-
-    }, (err) => {
-      console.error('预览失败', err);
-    });
-
-
-  } else if (role === 0) { // 用户端
-
-    // 直接推流
-    ZegoClient.supportVideoCodeType(({
-                                       H264,
-                                       VP8,
-                                       Vp9,
-                                       H265
-                                     }) => {
-      // 开启预览
-      zg.startPreview(localVideo, previewConfig, () => {
-        isPreviewed = true;
-        let videoCodeType = VP8 ? 'VP8' : (H264 ? 'H264' : null);
-//        let videoCodeType = 'H264';
-        if (videoCodeType) {
-          const extraInfo = {videoCodeType};
-          // 根据检测结果选择推流的编码格式并带上流附加消息
-          zg.startPublishingStream(streamId, localVideo, JSON.stringify(extraInfo), {
-            videoDecodeType: videoCodeType
-          });
-        } else {
-          console.error('没有可用视频编码类型');
-        }
-
-      }, (err) => {
-        console.error('预览失败', err);
-      });
-
-      zg.onStreamUpdated = (type, streamListAfter) => {
-        if (type == 0) {
-          recordConfig.remoteUserid = streamListAfter[0].user_id
-          let {stream_id, extra_info} = streamListAfter[0];
-          let videoCodeType = extra_info ? JSON.parse(extra_info).videoCodeType : 'H264';
-          const remoteVideo = getRemoteVideo()
-          zg.startPlayingStream(stream_id, remoteVideo, '', {
-            videoDecodeType: videoCodeType
-          });
-          remoteVideo.muted = false;
-        } else {
-          // 收到流删除后退出
-          leaveRoom();
-        }
-      }
-
-      zg.onPublishStateUpdate = (type, streamid, error) => {
-
-        console.log("type == " + type);
-        console.log("streamid == " + streamid)
-        console.log("error == " + error);
-
-        if (type === 1 && publishTryCount === 0) {
-          publishTryCount++;
-          let videCodeType = H264 ? 'H264' : (VP8 ? 'VP8' : null);
-          if (videCodeType) {
-            zg.stopPublishingStream(streamid);
-            const extraInfo = {videCodeType};
-            zg.startPublishingStream(streamId, localVideo, JSON.stringify(extraInfo), {
-              videoDecodeType: videCodeType
-            });
-          } else {
-            console.error('没有可用视频编码类型');
-          }
-        }
-
-
-        if (type == 0) {
-          // 混音
-          var audioMixConfig = {
-            streamId: _config.idName,
-            effectId: 1,
-            loop: false,
-            replace: true
-          }
-          // var url = './assets/applaud.mp3';
-          //var url = 'https://bpic.588ku.com/audio_copy/audio/18/08/24/9841faee97016cdd91720970fd984204.mp3';
-          var url = 'https://kfjigou.yjbtest.com:9999/api/mp3/blink.mp3';
-//          zg.preloadEffect(1, url, ()=> {
-//            console.log('music preolad');
-//         console.log("加入房间混音状态:" + zg.ac.state);
-//            zg.playEffect(audioMixConfig, () => {
-//              console.warn('start play')
-//            console.log("正在混音:" + zg.ac.state);
-//            }, () => {
-//              console.warn('play end');
-          //           console.log("混音结束后:" + zg.ac.state);
-          //             zg.unloadEffect(1,_config.idName);
-          //           })
-          //         });
-        }
-      }
-
-// 	    zg.unloadEffect(1,_config.idName);
-    }, () => {
-      console.error('获取 sdp 失败');
-    });
-
-  } else {
-    console.error('场景不适用');
-  }
 }
 
 function getRemoteVideo () {
