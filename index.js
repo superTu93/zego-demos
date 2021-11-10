@@ -23,7 +23,9 @@ var zg,
   isPublish = false,
   $userList = [],
   userRole = 1, // 全局存一份角色
-  streamId = _config.idName
+  streamId = _config.idName,
+  MediaStreamSource = null,
+  scriptProcessor = null
 let apiDomain = "https://test.zegonetwork.com:1143";
 recordConfig = {
   remoteUserid: '',
@@ -221,11 +223,13 @@ function listen () {
     },
 
     onPublishQualityUpdate: function (streamid, quality) {
-      // console.info("#" + streamid + "#" + "publish " + " audio: " + quality.audioBitrate + " video: " + quality.videoBitrate + " fps: " + quality.videoFPS);
+      // console.info("#" + streamid + "#" + "publish " + " audio: " + quality.audioBitrate + " video: " +
+      // quality.videoBitrate + " fps: " + quality.videoFPS);
     },
 
     onPlayQualityUpdate: function (streamid, quality) {
-      // console.info("#" + streamid + "#" + "play " + " audio: " + quality.audioBitrate + " video: " + quality.videoBitrate + " fps: " + quality.videoFPS);
+      // console.info("#" + streamid + "#" + "play " + " audio: " + quality.audioBitrate + " video: " +
+      // quality.videoBitrate + " fps: " + quality.videoFPS);
     },
 
     onDisconnect: function (error) {
@@ -331,9 +335,9 @@ function getPlayVolume () {
   if (!stream) return
   console.log('获取音量')
   const audioContext = zg.audioMixing.ac
-  const source = audioContext.createMediaStreamSource(stream)
-  const scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1)
-  source.connect(scriptProcessor)
+  MediaStreamSource = audioContext.createMediaStreamSource(stream)
+  scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1)
+  MediaStreamSource.connect(scriptProcessor)
   scriptProcessor.connect(audioContext.destination)
   scriptProcessor.onaudioprocess = function (e) {
     const buffer = e.inputBuffer.getChannelData(0); //获得缓冲区的输入音频，转换为包含了PCM通道数据的32位浮点数组
@@ -341,6 +345,13 @@ function getPlayVolume () {
     let maxVal = Math.max.apply(Math, buffer)
     console.log('拉流音量：', maxVal)
   }
+
+  setTimeout(stopGetPlayVolume, 5000) // 5秒后停止获取
+}
+
+function stopGetPlayVolume () {
+  MediaStreamSource && MediaStreamSource.disconnect()
+  scriptProcessor && scriptProcessor.disconnect()
 }
 
 
