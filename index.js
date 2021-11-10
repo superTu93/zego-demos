@@ -250,6 +250,7 @@ function listen () {
         isPublish && zg.stopPublishingStream(streamId)
         isPreviewed = false
         isPublish = false
+        clearPlay()
       }
     },
 
